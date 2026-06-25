@@ -2,12 +2,11 @@
   "name": "meta-creative-dashboard",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
   "scripts": {
     "dev": "vite",
-    "start": "node server/index.js",
-    "server": "node server/index.js",
-    "dev:all": "concurrently -n web,api -c blue,green \"vite\" \"node server/index.js\"",
+    "start": "node server/index.mjs",
+    "server": "node server/index.mjs",
+    "dev:all": "concurrently -n web,api -c blue,green \"vite\" \"node server/index.mjs\"",
     "build": "vite build",
     "preview": "vite preview"
   },

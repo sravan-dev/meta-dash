@@ -9,7 +9,7 @@ import {
   fetchAccounts,
   fetchCreatives,
   fetchImageDataUrl,
-} from './meta.js';
+} from './meta.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, '.env') });
