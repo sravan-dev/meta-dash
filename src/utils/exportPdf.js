@@ -53,7 +53,23 @@ async function mapLimit(items, limit, fn) {
 
 const mime = (dataUrl) => (dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG');
 
+// Trigger a browser download for an in-memory Blob.
+export function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Builds the PDF and returns its Blob (the caller decides when to download).
+// onProgress(done, total, label) reports both a fraction and a human phase.
 export async function exportToPdf(rows, { filename = 'Creative-Report.pdf', onProgress } = {}) {
+  onProgress?.(0, 1, 'Fetching creative list…');
+
   // 1. Look up the thumbnail URL for each ad in the export set.
   const creativeMap = await getCreatives(rows.map((r) => r.adId).filter(Boolean));
 
@@ -77,7 +93,7 @@ export async function exportToPdf(rows, { filename = 'Creative-Report.pdf', onPr
       /* skip images that fail to load */
     }
     done += 1;
-    onProgress?.(done, urls.length);
+    onProgress?.(done, urls.length, `Loading creatives ${done}/${urls.length}…`);
   });
 
   // Per-row data URL for the Preview column.
@@ -87,6 +103,7 @@ export async function exportToPdf(rows, { filename = 'Creative-Report.pdf', onPr
   });
 
   // 3. Build the PDF.
+  onProgress?.(urls.length, urls.length, 'Building PDF…');
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   doc.setFontSize(14);
   doc.text('Meta Creative Report', 14, 14);
@@ -126,5 +143,5 @@ export async function exportToPdf(rows, { filename = 'Creative-Report.pdf', onPr
     },
   });
 
-  doc.save(filename);
+  return { blob: doc.output('blob'), filename };
 }

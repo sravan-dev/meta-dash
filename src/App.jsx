@@ -1,11 +1,14 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { getInsights, getAccounts } from './api/client.js';
-import { exportToPdf } from './utils/exportPdf.js';
+import { exportToPdf, downloadBlob } from './utils/exportPdf.js';
 import KpiCards from './components/KpiCards.jsx';
 import SpendChart from './components/SpendChart.jsx';
 import DataTable from './components/DataTable.jsx';
 import PreviewModal from './components/PreviewModal.jsx';
+import ExportModal from './components/ExportModal.jsx';
 import Skeleton from './components/Skeleton.jsx';
+
+const pad = (n) => String(n).padStart(2, '0');
 
 // Format a Date as a local YYYY-MM-DD string.
 const ymd = (d) => {
@@ -41,22 +44,26 @@ export default function App() {
   const [previewAd, setPreviewAd] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [accountId, setAccountId] = useState('');
-  const [exporting, setExporting] = useState('');
+  const [exportState, setExportState] = useState(null);
   const [activePreset, setActivePreset] = useState(PRESETS[0].key); // Last 7 days
   const [connected, setConnected] = useState(null); // null = checking, true/false
   const didAutoLoad = useRef(false);
 
   async function handleExport() {
-    setExporting('Preparing PDF…');
+    const now = new Date();
+    const stamp = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    const filename = `Creative-Report-${since}_to_${until}_${stamp}.pdf`;
+    setExportState({ status: 'working', label: 'Preparing…', done: 0, total: 0, filename });
     try {
-      await exportToPdf(filtered, {
-        filename: `Creative-Report-${since}_to_${until}.pdf`,
-        onProgress: (done, total) => setExporting(`Loading creatives ${done}/${total}…`),
+      const { blob } = await exportToPdf(filtered, {
+        filename,
+        onProgress: (done, total, label) =>
+          setExportState((s) => (s ? { ...s, done, total, label: label ?? s.label } : s)),
       });
+      downloadBlob(blob, filename); // auto-download as soon as it's ready
+      setExportState((s) => (s ? { ...s, status: 'done', blob } : s));
     } catch (e) {
-      setError(`PDF export failed: ${e.message}`);
-    } finally {
-      setExporting('');
+      setExportState((s) => (s ? { ...s, status: 'error', error: e.message } : s));
     }
   }
 
@@ -138,8 +145,11 @@ export default function App() {
             <span className="dot" />
             {connected === true ? 'Connected' : connected === false ? 'Not connected' : 'Connecting…'}
           </span>
-          <button onClick={handleExport} disabled={!filtered.length || !!exporting}>
-            {exporting || '⬇ Export PDF'}
+          <button
+            onClick={handleExport}
+            disabled={!filtered.length || exportState?.status === 'working'}
+          >
+            {exportState?.status === 'working' ? 'Exporting…' : '⬇ Export PDF'}
           </button>
         </div>
       </header>
@@ -255,6 +265,14 @@ export default function App() {
       )}
 
       {previewAd && <PreviewModal ad={previewAd} onClose={() => setPreviewAd(null)} />}
+
+      {exportState && (
+        <ExportModal
+          state={exportState}
+          onClose={() => setExportState(null)}
+          onDownload={() => downloadBlob(exportState.blob, exportState.filename)}
+        />
+      )}
     </div>
   );
 }
