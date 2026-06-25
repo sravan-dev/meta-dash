@@ -79,6 +79,16 @@ app.get('/api/image', async (req, res) => {
   }
 });
 
+// Serve the built React app (Vite output) so this runs as a single Node
+// process in production — the frontend and /api live on the same origin.
+const distDir = join(__dirname, '..', 'dist');
+app.use(express.static(distDir));
+
+// SPA fallback: any non-API GET returns index.html so client routing works.
+app.get(/^\/(?!api\/).*/, (_req, res) => {
+  res.sendFile(join(distDir, 'index.html'));
+});
+
 app.listen(PORT, () => {
   console.log(`Meta proxy listening on http://localhost:${PORT}`);
 });
