@@ -18,11 +18,15 @@ const ymd = (d) => {
 
 // Quick date-range presets, computed relative to today.
 const PRESETS = [
+  { key: '1d', label: '1 day', apply: (d) => d.setDate(d.getDate() - 1) },
   { key: 'prevweek', label: 'Last 7 days', apply: (d) => d.setDate(d.getDate() - 7) },
   { key: '1m', label: '1 month', apply: (d) => d.setMonth(d.getMonth() - 1) },
   { key: '2m', label: '2 months', apply: (d) => d.setMonth(d.getMonth() - 2) },
   { key: '3m', label: '3 months', apply: (d) => d.setMonth(d.getMonth() - 3) },
 ];
+
+// Range selected on first load (kept as "Last 7 days").
+const DEFAULT_PRESET = PRESETS.find((p) => p.key === 'prevweek');
 
 function presetRange(preset) {
   const until = new Date();
@@ -32,7 +36,7 @@ function presetRange(preset) {
 }
 
 export default function App() {
-  const initialRange = presetRange(PRESETS[0]); // Last 7 days
+  const initialRange = presetRange(DEFAULT_PRESET); // Last 7 days
   const [since, setSince] = useState(initialRange.since);
   const [until, setUntil] = useState(initialRange.until);
   const [level, setLevel] = useState('ad');
@@ -45,7 +49,7 @@ export default function App() {
   const [accounts, setAccounts] = useState([]);
   const [accountId, setAccountId] = useState('');
   const [exportState, setExportState] = useState(null);
-  const [activePreset, setActivePreset] = useState(PRESETS[0].key); // Last 7 days
+  const [activePreset, setActivePreset] = useState(DEFAULT_PRESET.key); // Last 7 days
   const [connected, setConnected] = useState(null); // null = checking, true/false
   const didAutoLoad = useRef(false);
 
