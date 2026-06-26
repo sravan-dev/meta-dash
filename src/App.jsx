@@ -1,10 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { getInsights, getAccounts } from './api/client.js';
+import { getInsights, getAccounts, getCreatives } from './api/client.js';
 import { exportToPdf, downloadBlob } from './utils/exportPdf.js';
 import KpiCards from './components/KpiCards.jsx';
 import SpendChart from './components/SpendChart.jsx';
 import DataTable from './components/DataTable.jsx';
 import PreviewModal from './components/PreviewModal.jsx';
+import ImageLightbox from './components/ImageLightbox.jsx';
 import ExportModal from './components/ExportModal.jsx';
 import Skeleton from './components/Skeleton.jsx';
 
@@ -46,6 +47,8 @@ export default function App() {
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [previewAd, setPreviewAd] = useState(null);
+  const [lightbox, setLightbox] = useState(null); // { url, title }
+  const [creatives, setCreatives] = useState({}); // adId -> image url
   const [accounts, setAccounts] = useState([]);
   const [accountId, setAccountId] = useState('');
   const [exportState, setExportState] = useState(null);
@@ -112,6 +115,22 @@ export default function App() {
       setLoading(false);
     }
   }
+
+  // Fetch creative thumbnails for the loaded rows (server-side cached).
+  useEffect(() => {
+    const ids = rows.map((r) => r.adId).filter(Boolean);
+    if (!ids.length) {
+      setCreatives({});
+      return;
+    }
+    let alive = true;
+    getCreatives(ids)
+      .then((map) => alive && setCreatives(map))
+      .catch(() => {/* thumbnails are best-effort */});
+    return () => {
+      alive = false;
+    };
+  }, [rows]);
 
   // Client-side text filter across the identifier columns.
   const filtered = useMemo(() => {
@@ -263,12 +282,25 @@ export default function App() {
             <h2>
               Rows <span className="muted">({filtered.length})</span>
             </h2>
-            <DataTable rows={filtered} onPreview={setPreviewAd} />
+            <DataTable
+              rows={filtered}
+              creatives={creatives}
+              onPreview={setPreviewAd}
+              onImage={(r, url) => setLightbox({ url, title: r.ads || r.campaignName })}
+            />
           </div>
         </>
       )}
 
       {previewAd && <PreviewModal ad={previewAd} onClose={() => setPreviewAd(null)} />}
+
+      {lightbox && (
+        <ImageLightbox
+          src={lightbox.url}
+          title={lightbox.title}
+          onClose={() => setLightbox(null)}
+        />
+      )}
 
       {exportState && (
         <ExportModal

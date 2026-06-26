@@ -21,7 +21,7 @@ const COLS = [
 
 const PAGE_SIZE = 30;
 
-export default function DataTable({ rows, onPreview }) {
+export default function DataTable({ rows, creatives = {}, onPreview, onImage }) {
   const [sort, setSort] = useState({ key: 'amountSpent', dir: 'desc' });
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
@@ -99,7 +99,16 @@ export default function DataTable({ rows, onPreview }) {
             {pageRows.map((r, i) => (
               <tr key={start + i}>
                 <td className="preview-col">
-                  {r.adId ? (
+                  {r.adId && creatives[r.adId] ? (
+                    <img
+                      className="thumb"
+                      src={creatives[r.adId]}
+                      alt=""
+                      loading="lazy"
+                      title="Click to enlarge"
+                      onClick={() => onImage?.(r, creatives[r.adId])}
+                    />
+                  ) : r.adId ? (
                     <button className="link-btn" onClick={() => onPreview(r)}>
                       Show
                     </button>
