@@ -16,6 +16,7 @@ const str = (v) => (v == null ? '' : String(v));
 const COLUMNS = [
   { header: 'Preview', preview: true },
   { header: 'Campaign name', get: (r) => str(r.campaignName) },
+  { header: 'Campaign ID', get: (r) => str(r.campaignId) },
   { header: 'Ads', get: (r) => str(r.ads) },
   { header: 'Ad set name', get: (r) => str(r.adSetName) },
   { header: 'Result type', get: (r) => str(r.resultType) },
@@ -124,8 +125,9 @@ export async function exportToPdf(rows, { filename = 'Creative-Report.pdf', onPr
     columnStyles: {
       0: { cellWidth: SQUARE + CELL_PAD * 2, halign: 'center' }, // Preview
       1: { cellWidth: 32 }, // Campaign name
-      2: { cellWidth: 32 }, // Ads
-      3: { cellWidth: 30 }, // Ad set name
+      2: { cellWidth: 22 }, // Campaign ID
+      3: { cellWidth: 32 }, // Ads
+      4: { cellWidth: 30 }, // Ad set name
     },
     bodyStyles: { minCellHeight: SQUARE + CELL_PAD * 2 },
     // Draw the creative square into the Preview column.

@@ -3,6 +3,7 @@ import { fmtCurrency, fmtNum, fmtDec, fmtPct } from '../utils/format.js';
 
 const COLS = [
   { key: 'campaignName', label: 'Campaign', fmt: (v) => v },
+  { key: 'campaignId', label: 'Campaign ID', fmt: (v) => v },
   { key: 'ads', label: 'Ad', fmt: (v) => v },
   { key: 'adSetName', label: 'Ad set', fmt: (v) => v },
   { key: 'resultType', label: 'Result type', fmt: (v) => v },
@@ -31,9 +32,9 @@ export default function DataTable({ rows, creatives = {}, onPreview, onImage }) 
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) =>
-      [r.campaignName, r.ads, r.adSetName]
+      [r.campaignName, r.campaignId, r.ads, r.adSetName]
         .filter(Boolean)
-        .some((s) => s.toLowerCase().includes(q))
+        .some((s) => String(s).toLowerCase().includes(q))
     );
   }, [rows, query]);
 

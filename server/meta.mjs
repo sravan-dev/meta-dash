@@ -27,6 +27,7 @@ const isRateLimit = (msg) =>
 // Fields requested at the "ad" level. These cover every column in the report.
 const FIELDS = [
   'ad_id',
+  'campaign_id',
   'campaign_name',
   'adset_name',
   'ad_name',
@@ -81,6 +82,7 @@ function transformRow(r, { resultAction, resultLabel }) {
   // Keys here must match COLUMNS in src/utils/exportExcel.js
   return {
     adId: r.ad_id ?? null,
+    campaignId: r.campaign_id ?? '',
     campaignName: r.campaign_name ?? '',
     ads: r.ad_name ?? '',
     adSetName: r.adset_name ?? '',

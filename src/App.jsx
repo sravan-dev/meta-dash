@@ -137,9 +137,9 @@ export default function App() {
     if (!search.trim()) return rows;
     const q = search.toLowerCase();
     return rows.filter((r) =>
-      [r.campaignName, r.ads, r.adSetName]
+      [r.campaignName, r.campaignId, r.ads, r.adSetName]
         .filter(Boolean)
-        .some((s) => s.toLowerCase().includes(q))
+        .some((s) => String(s).toLowerCase().includes(q))
     );
   }, [rows, search]);
 
