@@ -10,6 +10,7 @@ import {
   fetchCreatives,
   fetchImageDataUrl,
   fetchInvoices,
+  fetchBillingReport,
 } from './meta.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -87,6 +88,17 @@ app.get('/api/invoices', async (req, res) => {
     res.json(await fetchInvoices({ accountId, year }));
   } catch (err) {
     console.error('[invoices] error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/billing-report?accountId=123&month=2026-09 -> { account, transactions, ... }
+app.get('/api/billing-report', async (req, res) => {
+  try {
+    const { accountId, month } = req.query;
+    res.json(await fetchBillingReport({ accountId, month }));
+  } catch (err) {
+    console.error('[billing-report] error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

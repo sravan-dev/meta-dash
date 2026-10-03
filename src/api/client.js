@@ -75,3 +75,15 @@ export async function getInvoices({ accountId, year } = {}) {
   }
   return res.json(); // { year, account, months, invoices, invoicesNote }
 }
+
+export async function getBillingReport({ accountId, month }) {
+  const params = new URLSearchParams({ month });
+  if (accountId) params.set('accountId', accountId);
+
+  const res = await fetch(`${BASE}/billing-report?${params.toString()}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed (${res.status})`);
+  }
+  return res.json(); // { month, periodStart, periodEnd, estimated, note, account, transactions }
+}

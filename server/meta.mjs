@@ -69,6 +69,13 @@ const pickPurchaseValue = (arr) => {
   return null;
 };
 
+// Ad account ids are numeric. Rejecting anything else stops a crafted
+// accountId (e.g. "123/../<node>") from steering requests to other Graph paths.
+function checkAccountId(id) {
+  if (id && !/^\d+$/.test(String(id))) throw new Error('Invalid ad account id.');
+  return id;
+}
+
 function transformRow(r, { resultAction, resultLabel }) {
   const spend = num(r.spend);
   const results = pickAction(r.actions, resultAction);
@@ -150,7 +157,7 @@ export async function fetchAccounts() {
 
 export async function fetchInsights({ since, until, level = 'ad', accountId }) {
   const token = process.env.META_ACCESS_TOKEN;
-  const acct = accountId || process.env.META_AD_ACCOUNT_ID;
+  const acct = checkAccountId(accountId || process.env.META_AD_ACCOUNT_ID);
   const version = process.env.META_API_VERSION || 'v21.0';
   const resultAction = process.env.META_RESULT_ACTION || 'lead';
   const resultLabel = process.env.META_RESULT_LABEL || 'Leads (form)';
@@ -362,7 +369,7 @@ async function graphGet(path, params) {
 }
 
 export async function fetchInvoices({ accountId, year }) {
-  const acct = accountId || process.env.META_AD_ACCOUNT_ID;
+  const acct = checkAccountId(accountId || process.env.META_AD_ACCOUNT_ID);
   if (!process.env.META_ACCESS_TOKEN || !acct) {
     throw new Error('Missing META_ACCESS_TOKEN or ad account id.');
   }
@@ -451,6 +458,146 @@ export async function fetchInvoices({ accountId, year }) {
     }
 
     result = { year: y, account: accountInfo, months, invoices, invoicesNote };
+  } catch (err) {
+    if (isRateLimit(err.message)) {
+      const stale = getStale(cacheKey);
+      if (stale) return stale;
+    }
+    throw err;
+  }
+
+  setCache(cacheKey, result);
+  return result;
+}
+
+// --- Monthly billing report (transaction level) ---------------------------
+// Mirrors Ads Manager's "Billing report" PDF: every payment / refund / fund
+// top-up on the ad account for one calendar month (IST). Uses the ad account
+// `transactions` edge; if Meta refuses it for this token, falls back to daily
+// spend from insights (marked as estimated).
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const istMonthStart = (y, m) => Math.floor((Date.UTC(y, m - 1, 1) - IST_OFFSET_MS) / 1000);
+
+// Meta returns amounts either as plain numbers/strings or as a CurrencyAmount
+// object ({ amount, amount_in_hundredths, currency }).
+function txAmount(a) {
+  if (a == null) return null;
+  if (typeof a === 'object') {
+    if (a.amount != null) return num(a.amount);
+    if (a.amount_in_hundredths != null) return num(a.amount_in_hundredths) / 100;
+    return null;
+  }
+  return num(a);
+}
+
+function txRow(t) {
+  const amount = txAmount(t.amount) ?? 0;
+  const kind = `${t.charge_type || ''} ${t.tx_type || ''} ${t.billing_reason || ''}`.toLowerCase();
+  const isRefund = amount < 0 || /refund/.test(kind);
+  const isFunding = /fund|prepay|add_funds|deposit/.test(kind);
+  const status = String(t.status || '').toLowerCase();
+  return {
+    time: Number(t.time) || 0,
+    id: String(t.id || ''),
+    description: isRefund ? 'Meta ads refund' : 'Meta ads payment',
+    paymentMethod: t.payment_option && t.payment_option !== 'unknown' ? String(t.payment_option) : 'N/A',
+    amount: isRefund && amount > 0 ? -amount : amount,
+    status: isRefund
+      ? 'Refunded'
+      : isFunding
+        ? 'Funded'
+        : /fail|declin/.test(status)
+          ? 'Failed'
+          : 'Paid',
+  };
+}
+
+export async function fetchBillingReport({ accountId, month }) {
+  const acct = checkAccountId(accountId || process.env.META_AD_ACCOUNT_ID);
+  if (!process.env.META_ACCESS_TOKEN || !acct) {
+    throw new Error('Missing META_ACCESS_TOKEN or ad account id.');
+  }
+  const m = /^(\d{4})-(\d{2})$/.exec(month || '');
+  if (!m) throw new Error('month must be YYYY-MM.');
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+
+  const cacheKey = `billing:${acct}:${month}`;
+  const fresh = getFresh(cacheKey, INVOICES_TTL);
+  if (fresh) return fresh;
+
+  const start = istMonthStart(y, mo);
+  const end = mo === 12 ? istMonthStart(y + 1, 1) : istMonthStart(y, mo + 1);
+
+  let result;
+  try {
+    const account = await graphGet(`act_${acct}`, {
+      fields:
+        'account_id,name,currency,business_name,business_street,business_street2,business_city,business_state,business_zip,business_country_code,tax_id,funding_source_details',
+    });
+
+    let transactions = [];
+    let estimated = false;
+    let note = '';
+    try {
+      const raw = await graphGet(`act_${acct}/transactions`, {
+        fields: 'id,time,amount,status,charge_type,tx_type,payment_option,billing_reason',
+        time_start: String(start),
+        time_stop: String(end),
+        limit: '200',
+      });
+      transactions = raw.map(txRow).filter((t) => t.time >= start && t.time < end);
+    } catch (err) {
+      // Fallback: one row per day of ad spend, grossed up by 18% GST.
+      estimated = true;
+      note = `Meta did not return transactions (${err.message}). Rows below are daily ad spend + 18% GST, not actual charges.`;
+      const pad = (n) => String(n).padStart(2, '0');
+      const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+      const days = await graphGet(`act_${acct}/insights`, {
+        level: 'account',
+        fields: 'spend',
+        time_increment: '1',
+        time_range: JSON.stringify({ since: `${y}-${pad(mo)}-01`, until: `${y}-${pad(mo)}-${pad(last)}` }),
+        limit: '50',
+      });
+      transactions = days
+        .filter((d) => num(d.spend))
+        .map((d) => ({
+          time: Math.floor((Date.parse(`${d.date_start}T12:00:00Z`) - IST_OFFSET_MS) / 1000),
+          id: '-',
+          description: 'Ad spend incl. GST (estimated)',
+          paymentMethod: 'N/A',
+          amount: Math.round(num(d.spend) * 118) / 100,
+          status: 'Estimated',
+        }));
+    }
+    transactions.sort((a, b) => b.time - a.time); // newest first, like Meta's report
+
+    const card = account.funding_source_details?.display_string || '';
+    result = {
+      month,
+      periodStart: start,
+      periodEnd: end,
+      estimated,
+      note,
+      account: {
+        id: account.account_id || acct,
+        name: account.name || acct,
+        currency: account.currency || 'INR',
+        card,
+        business: {
+          name: account.business_name || '',
+          lines: [
+            account.business_street,
+            account.business_street2,
+            [account.business_city, account.business_state, account.business_zip].filter(Boolean).join(', '),
+            account.business_country_code === 'IN' ? 'India' : account.business_country_code,
+          ].filter(Boolean),
+          taxId: account.tax_id || '',
+        },
+      },
+      transactions,
+    };
   } catch (err) {
     if (isRateLimit(err.message)) {
       const stale = getStale(cacheKey);

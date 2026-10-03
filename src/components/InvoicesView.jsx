@@ -11,6 +11,8 @@ import {
 import { getInvoices } from '../api/client.js';
 import { fmtCurrency, fmtNum } from '../utils/format.js';
 import Skeleton from './Skeleton.jsx';
+import { exportInvoicesPdf } from '../utils/exportInvoicesPdf.js';
+import { exportBillingReportPdf } from '../utils/exportBillingReportPdf.js';
 
 // Meta charges 18% GST on Indian ad accounts; shown as an estimate only.
 const GST_RATE = 0.18;
@@ -50,6 +52,19 @@ export default function InvoicesView({ accounts, accountId, setAccountId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [busyMonth, setBusyMonth] = useState(''); // month whose billing PDF is being built
+
+  async function downloadMonth(month) {
+    setBusyMonth(month);
+    setError('');
+    try {
+      await exportBillingReportPdf({ accountId, month, accountLabel: data?.account?.name });
+    } catch (e) {
+      setError(`Billing report failed: ${e.message}`);
+    } finally {
+      setBusyMonth('');
+    }
+  }
 
   useEffect(() => {
     if (!accountId) return;
@@ -116,6 +131,9 @@ export default function InvoicesView({ accounts, accountId, setAccountId }) {
             ))}
           </select>
         </div>
+        <button disabled={!data || loading} onClick={() => exportInvoicesPdf({ data, rows, totals })}>
+          ⬇ Download PDF
+        </button>
         <button
           className="secondary"
           disabled={!rows.length}
@@ -167,6 +185,7 @@ export default function InvoicesView({ accounts, accountId, setAccountId }) {
                     <th>Est. total paid</th>
                     <th>Impressions</th>
                     <th>Clicks</th>
+                    <th>Billing report</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -178,6 +197,15 @@ export default function InvoicesView({ accounts, accountId, setAccountId }) {
                       <td>{fmtCurrency(r.total)}</td>
                       <td>{fmtNum(r.impressions)}</td>
                       <td>{fmtNum(r.clicks)}</td>
+                      <td>
+                        <button
+                          className="link-btn"
+                          disabled={!!busyMonth}
+                          onClick={() => downloadMonth(r.month)}
+                        >
+                          {busyMonth === r.month ? 'Building…' : '⬇ PDF'}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -187,7 +215,7 @@ export default function InvoicesView({ accounts, accountId, setAccountId }) {
                     <td>{fmtCurrency(totals.spend)}</td>
                     <td>{fmtCurrency(totals.gst)}</td>
                     <td>{fmtCurrency(totals.total)}</td>
-                    <td colSpan={2} />
+                    <td colSpan={3} />
                   </tr>
                 </tfoot>
               </table>
