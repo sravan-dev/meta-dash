@@ -397,7 +397,7 @@ export async function fetchInvoices({ accountId, year }) {
             limit: '50',
           }),
       graphGet(`act_${acct}`, {
-        fields: 'name,currency,amount_spent,balance,spend_cap,funding_source_details',
+        fields: 'name,currency,amount_spent,balance,spend_cap,funding_source_details,business{id,name}',
       }),
     ]);
 
@@ -424,10 +424,11 @@ export async function fetchInvoices({ accountId, year }) {
 
     let invoices = [];
     let invoicesNote = '';
-    const businessId = process.env.META_BUSINESS_ID;
+    // The ad account's owning Business Manager; META_BUSINESS_ID overrides it.
+    const businessId = process.env.META_BUSINESS_ID || account.business?.id;
     if (!businessId) {
       invoicesNote =
-        'Set META_BUSINESS_ID in server/.env to also list official Meta invoices (monthly-invoiced businesses only).';
+        'This ad account is not owned by a Business Manager, so Meta has no official invoices for it.';
     } else {
       try {
         const raw = await graphGet(`${businessId}/business_invoices`, {
@@ -453,7 +454,7 @@ export async function fetchInvoices({ accountId, year }) {
             downloadUrl: i.download_uri || '',
           }));
       } catch (err) {
-        invoicesNote = `Official invoices unavailable: ${err.message}`;
+        invoicesNote = `Official invoices unavailable for ${account.business?.name || businessId}: ${err.message} (Meta only issues these to monthly-invoiced businesses; the token also needs business_management.)`;
       }
     }
 
