@@ -347,3 +347,24 @@ tbody tr:hover { background: var(--panel-2); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+
+/* Section tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.tab {
+  background: transparent;
+  color: var(--muted);
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px;
+  margin-bottom: -1px;
+}
+.tab:hover:not(:disabled) { background: transparent; color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab.active:hover:not(:disabled) { color: var(--accent); }
+
+/* Invoices */
+.kpi .value.value-sm { font-size: 15px; white-space: normal; }
+.invoice-table th { cursor: default; }
+.invoice-table tfoot td { font-weight: 700; border-top: 2px solid var(--border); border-bottom: none; }
+.invoice-table a { color: var(--accent); font-weight: 600; }
+.note { font-size: 12px; margin: 10px 0 0; }

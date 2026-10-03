@@ -333,3 +333,132 @@ export async function fetchImageDataUrl(imageUrl) {
   setCache(cacheKey, dataUrl);
   return dataUrl;
 }
+
+// --- Invoices / billing ---------------------------------------------------
+// Monthly spend for one ad account (insights with time_increment=monthly),
+// plus account-level billing info. If META_BUSINESS_ID is set, also pulls the
+// official Meta invoices (only exists for businesses on monthly invoicing).
+const INVOICES_TTL = 30 * 60 * 1000;
+
+async function graphGet(path, params) {
+  const token = process.env.META_ACCESS_TOKEN;
+  const version = process.env.META_API_VERSION || 'v21.0';
+  const qs = new URLSearchParams({ ...params, access_token: token });
+  let url = `${GRAPH}/${version}/${path}?${qs.toString()}`;
+  const out = [];
+  let single;
+  while (url) {
+    const resp = await fetch(url);
+    const json = await resp.json();
+    if (json.error) throw new Error(`Meta API: ${json.error.message}`);
+    if (!Array.isArray(json.data)) {
+      single = json;
+      break;
+    }
+    out.push(...json.data);
+    url = json.paging?.next || null;
+  }
+  return single ?? out;
+}
+
+export async function fetchInvoices({ accountId, year }) {
+  const acct = accountId || process.env.META_AD_ACCOUNT_ID;
+  if (!process.env.META_ACCESS_TOKEN || !acct) {
+    throw new Error('Missing META_ACCESS_TOKEN or ad account id.');
+  }
+  const y = Number(year) || new Date().getFullYear();
+
+  const cacheKey = `invoices:${acct}:${y}`;
+  const fresh = getFresh(cacheKey, INVOICES_TTL);
+  if (fresh) return fresh;
+
+  // Clamp the range to today so the current year doesn't ask for future dates.
+  const today = new Date().toISOString().slice(0, 10);
+  const since = `${y}-01-01`;
+  const until = `${y}-12-31` < today ? `${y}-12-31` : today;
+
+  let result;
+  try {
+    const [monthlyRaw, account] = await Promise.all([
+      since > today
+        ? []
+        : graphGet(`act_${acct}/insights`, {
+            level: 'account',
+            fields: 'spend,impressions,clicks,reach,account_currency',
+            time_increment: 'monthly',
+            time_range: JSON.stringify({ since, until }),
+            limit: '50',
+          }),
+      graphGet(`act_${acct}`, {
+        fields: 'name,currency,amount_spent,balance,spend_cap,funding_source_details',
+      }),
+    ]);
+
+    const months = monthlyRaw.map((r) => ({
+      month: (r.date_start || '').slice(0, 7), // YYYY-MM
+      since: r.date_start,
+      until: r.date_stop,
+      spend: num(r.spend) ?? 0,
+      impressions: num(r.impressions),
+      clicks: num(r.clicks),
+      reach: num(r.reach),
+    }));
+
+    // amount_spent / balance / spend_cap come back in minor units (paise, cents).
+    const minor = (v) => (num(v) != null ? num(v) / 100 : null);
+    const accountInfo = {
+      name: account.name || acct,
+      currency: account.currency || '',
+      lifetimeSpent: minor(account.amount_spent),
+      balance: minor(account.balance),
+      spendCap: num(account.spend_cap) ? minor(account.spend_cap) : null,
+      paymentMethod: account.funding_source_details?.display_string || '',
+    };
+
+    let invoices = [];
+    let invoicesNote = '';
+    const businessId = process.env.META_BUSINESS_ID;
+    if (!businessId) {
+      invoicesNote =
+        'Set META_BUSINESS_ID in server/.env to also list official Meta invoices (monthly-invoiced businesses only).';
+    } else {
+      try {
+        const raw = await graphGet(`${businessId}/business_invoices`, {
+          fields:
+            'invoice_id,invoice_date,due_date,type,payment_status,billed_amount_details,download_uri,currency,ad_account_ids,billing_period',
+          issue_start_date: since,
+          issue_end_date: `${y}-12-31`,
+          limit: '100',
+        });
+        invoices = raw
+          .filter((i) => !i.ad_account_ids || i.ad_account_ids.map(String).includes(String(acct)))
+          .map((i) => ({
+            id: i.invoice_id || i.id,
+            date: i.invoice_date || '',
+            dueDate: i.due_date || '',
+            type: i.type || '',
+            status: i.payment_status || '',
+            period: i.billing_period || '',
+            currency: i.currency || i.billed_amount_details?.currency || '',
+            net: num(i.billed_amount_details?.net_amount),
+            tax: num(i.billed_amount_details?.tax_amount),
+            total: num(i.billed_amount_details?.total_amount),
+            downloadUrl: i.download_uri || '',
+          }));
+      } catch (err) {
+        invoicesNote = `Official invoices unavailable: ${err.message}`;
+      }
+    }
+
+    result = { year: y, account: accountInfo, months, invoices, invoicesNote };
+  } catch (err) {
+    if (isRateLimit(err.message)) {
+      const stale = getStale(cacheKey);
+      if (stale) return stale;
+    }
+    throw err;
+  }
+
+  setCache(cacheKey, result);
+  return result;
+}

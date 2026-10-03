@@ -62,3 +62,16 @@ export async function getPreview(adId, format) {
   const { html } = await res.json();
   return html;
 }
+
+export async function getInvoices({ accountId, year } = {}) {
+  const params = new URLSearchParams();
+  if (accountId) params.set('accountId', accountId);
+  if (year) params.set('year', year);
+
+  const res = await fetch(`${BASE}/invoices?${params.toString()}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed (${res.status})`);
+  }
+  return res.json(); // { year, account, months, invoices, invoicesNote }
+}

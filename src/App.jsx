@@ -8,6 +8,7 @@ import PreviewModal from './components/PreviewModal.jsx';
 import ImageLightbox from './components/ImageLightbox.jsx';
 import ExportModal from './components/ExportModal.jsx';
 import Skeleton from './components/Skeleton.jsx';
+import InvoicesView from './components/InvoicesView.jsx';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -54,6 +55,7 @@ export default function App() {
   const [exportState, setExportState] = useState(null);
   const [activePreset, setActivePreset] = useState(DEFAULT_PRESET.key); // 1 day
   const [connected, setConnected] = useState(null); // null = checking, true/false
+  const [view, setView] = useState('performance'); // 'performance' | 'invoices'
   const didAutoLoad = useRef(false);
 
   async function handleExport() {
@@ -168,15 +170,38 @@ export default function App() {
             <span className="dot" />
             {connected === true ? 'Connected' : connected === false ? 'Not connected' : 'Connecting…'}
           </span>
+          {view === 'performance' && (
           <button
             onClick={handleExport}
             disabled={!filtered.length || exportState?.status === 'working'}
           >
             {exportState?.status === 'working' ? 'Exporting…' : '⬇ Export PDF'}
           </button>
+          )}
         </div>
       </header>
 
+      <nav className="tabs">
+        <button
+          className={`tab ${view === 'performance' ? 'active' : ''}`}
+          onClick={() => setView('performance')}
+        >
+          Performance
+        </button>
+        <button
+          className={`tab ${view === 'invoices' ? 'active' : ''}`}
+          onClick={() => setView('invoices')}
+        >
+          Invoices
+        </button>
+      </nav>
+
+      {view === 'invoices' && (
+        <InvoicesView accounts={accounts} accountId={accountId} setAccountId={setAccountId} />
+      )}
+
+      {view === 'performance' && (
+      <>
       <div className="toolbar">
         <div className="field">
           <label>Ad account</label>
@@ -290,6 +315,8 @@ export default function App() {
             />
           </div>
         </>
+      )}
+      </>
       )}
 
       {previewAd && <PreviewModal ad={previewAd} onClose={() => setPreviewAd(null)} />}
